@@ -1,35 +1,70 @@
+function isAdmin(p) {
+    return p?.admin === "admin" || p?.admin === "superadmin";
+}
+
+const cooldown = new Map();
+
 module.exports = {
-    nome: 'promover',
-    descricao: 'Promove um membro a administrador do grupo',
-    categoria: 'admin',
-    async executar(socket, msg, args) {
+    nome: "promover",
+    descricao: "Concede o cargo de administrador a um membro",
+    categoria: "admin",
+
+    executar: async (socket, msg, args) => {
         const deOnde = msg.key.remoteJid;
-        if (!deOnde.endsWith('@g.us')) return await socket.sendMessage(deOnde, { text: '❌ Este comando só pode ser utilizado em grupos.' });
-
-        const metadata = await socket.groupMetadata(deOnde);
-        const participantes = metadata.participants;
-        const meuJid = socket.user.id.split(':')[0] + '@s.whatsapp.net';
-
-        if (!(participantes.find(p => p.id === meuJid)?.admin?.includes('admin'))) {
-            return await socket.sendMessage(deOnde, { text: '❌ Thánatos necessita de privilégios administrativos para outorgar poder.' });
-        }
-
-        const remetente = msg.key.participant || msg.key.remoteJid;
-        if (!(participantes.find(p => p.id === remetente)?.admin?.includes('admin'))) {
-            return await socket.sendMessage(deOnde, { text: '❌ Apenas administradores podem elevar o status de um membro.' });
-        }
-
-        let alvo = msg.message.extendedTextMessage?.contextInfo?.mentionedJid?.length > 0 
-            ? msg.message.extendedTextMessage.contextInfo.mentionedJid[0] 
-            : msg.message.extendedTextMessage?.contextInfo?.participant;
-
-        if (!alvo) return await socket.sendMessage(deOnde, { text: '❌ Indique quem deseja promover marcando a pessoa ou respondendo à sua mensagem.' });
+        if (!deOnde.endsWith('@g.us')) return;
 
         try {
-            await socket.groupParticipantsUpdate(deOnde, [alvo], 'promote');
-            await socket.sendMessage(deOnde, { text: `✨ *ASCENSÃO CONCEDIDA.*\n\n@${alvo.split('@')[0]} recebeu a bênção e agora faz parte do conselho de administradores.`, mentions: [alvo] });
-        } catch (erro) {
-            await socket.sendMessage(deOnde, { text: '❌ Falha ao tentar promover o usuário.' });
+            const sender = msg.key.participant || msg.key.remoteJid;
+            const contextInfo = msg.message?.extendedTextMessage?.contextInfo;
+            const alvo = contextInfo?.mentionedJid?.[0] || contextInfo?.participant;
+
+            if (!alvo) {
+                return socket.sendMessage(deOnde, {
+                    text: "❌ Mencione um usuário ou responda à mensagem dele.\nExemplo: !promover @usuario"
+                }, { quoted: msg });
+            }
+
+            if (cooldown.has(sender)) return;
+            cooldown.set(sender, true);
+            setTimeout(() => cooldown.delete(sender), 3000);
+
+            const metadata = await socket.groupMetadata(deOnde);
+            const senderData = metadata.participants.find(p => p.id === sender);
+            const targetData = metadata.participants.find(p => p.id === alvo);
+
+            const isSenderAdmin = isAdmin(senderData) || metadata.owner === sender;
+
+            if (!isSenderAdmin) {
+                return socket.sendMessage(deOnde, {
+                    text: "💀 Apenas administradores mortais possuem o direito de conceder poder."
+                }, { quoted: msg });
+            }
+
+            if (!targetData) {
+                return socket.sendMessage(deOnde, {
+                    text: "❌ Esta alma não foi encontrada nos registros deste grupo."
+                }, { quoted: msg });
+            }
+
+            if (isAdmin(targetData)) {
+                return socket.sendMessage(deOnde, {
+                    text: "🔮 Este mortal já faz parte do conselho administrativo."
+                }, { quoted: msg });
+            }
+
+            // Tenta promover direto no WhatsApp
+            await socket.groupParticipantsUpdate(deOnde, [alvo], "promote");
+
+            await socket.sendMessage(deOnde, {
+                text: `🔮👑 *ASCENSÃO SUPREMA*\n\n☠️ Um mortal ergueu-se do plano comum...\n\n👤 @${alvo.split("@")[0]} foi *PROMOVIDO*.\n\n💀 _"Pelo decreto de Thánatos, agora você detém a autoridade administrativa. Governe com mãos de ferro."_`,
+                mentions: [alvo]
+            }, { quoted: msg });
+
+        } catch (err) {
+            console.log("Erro no promover:", err);
+            await socket.sendMessage(deOnde, {
+                text: "❌ Falha ao conceder poder. Certifique-se de que eu sou Administrador do grupo."
+            });
         }
     }
 };
