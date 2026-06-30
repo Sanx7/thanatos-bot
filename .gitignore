@@ -1,0 +1,17 @@
+# Pastas de dependências e ambientes
+node_modules/
+.npm/
+
+# Arquivos de Sessão do WhatsApp (CRÍTICO: nunca envies isto para o GitHub)
+sessao_thanatos/
+*auth_info*
+*creds.json*
+
+# Arquivos de Logs e Sistema
+.DS_Store
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Dados dinâmicos salvos (opcional: se quiseres que o JSON dos grupos comece sempre limpo no Termux)
+src/dados/*.json

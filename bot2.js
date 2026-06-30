@@ -1,0 +1,215 @@
+const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = require('@whiskeysockets/baileys');
+const pino = require('pino');
+const fs = require('fs');
+const path = require('path');
+const readline = require('readline');
+
+// Configuração do leitor de terminal para o código de emparelhamento
+const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+const question = (text) => new Promise((resolve) => rl.question(text, resolve));
+
+// Objeto para armazenar os comandos carregados na memória
+const comandos = {};
+
+// Função para carregar os comandos de todas as subpastas automaticamente
+function carregarComandos() {
+    const pastaComandos = path.join(__dirname, 'src', 'comandos');
+    if (!fs.existsSync(pastaComandos)) return;
+
+    const categorias = fs.readdirSync(pastaComandos);
+
+    console.log('\n🔮 [THÁNATOS] DESPERTANDO COMANDOS...');
+    console.log('──────────────────────────────────────');
+
+    for (const category of categorias) {
+        const caminhoCategoria = path.join(pastaComandos, category);
+        
+        if (fs.lstatSync(caminhoCategoria).isDirectory()) {
+            const arquivos = fs.readdirSync(caminhoCategoria).filter(arq => arq.endsWith('.js'));
+            
+            for (const arquivo of arquivos) {
+                const comando = require(path.join(caminhoCategoria, arquivo));
+                if (comando.nome) {
+                    comando.categoria = category; 
+                    comandos[comando.nome.toLowerCase()] = comando;
+                    console.log(` ⚔️  !${comando.nome.padEnd(10)} ➔ [${category.toUpperCase()}]`);
+                }
+            }
+        }
+    }
+    console.log('──────────────────────────────────────\n');
+}
+
+async function iniciarThanatos() {
+    const { state, saveCreds } = await useMultiFileAuthState('./sessao_thanatos');
+
+    const socket = makeWASocket({
+        logger: pino({ level: 'silent' }),
+        auth: state,
+        printQRInTerminal: false // Desativa o QR Code para não bugar o Termux
+    });
+
+    // Se não houver sessão salva, solicita o número para emparelhamento por código
+    if (!socket.authState.creds.registered) {
+        console.log('\n💀 [THÁNATOS] MÉTODO DE EMPARELHAMENTO POR CÓDIGO ATIVADO.');
+        const numeroTelefone = await question('📱 Digite o número do bot com DDI e DDD (Ex: 5511999999999): ');
+        
+        // Remove espaços ou caracteres especiais que o usuário possa digitar
+        const numeroLimpo = numeroTelefone.replace(/[^0-9]/g, '');
+        
+        setTimeout(async () => {
+            try {
+                const codigo = await socket.requestPairingCode(numeroLimpo);
+                console.log('\n──────────────────────────────────────');
+                console.log(`🔑 SEU CÓDIGO DE CONEXÃO É: ${codigo}`);
+                console.log('──────────────────────────────────────');
+                console.log('👉 No celular, vá em: Aparelhos Conectados > Conectar com número de telefone e insira o código acima.\n');
+            } catch (erroCodigo) {
+                console.error('❌ Erro ao solicitar código de pareamento:', erroCodigo);
+            }
+        }, 3000);
+    }
+
+    socket.ev.on('connection.update', (update) => {
+        const { connection, lastDisconnect } = update;
+
+        if (connection === 'close') {
+            const erroCodigo = lastDisconnect?.error?.output?.statusCode;
+            const deveReiniciar = erroCodigo !== DisconnectReason.loggedOut;
+            
+            console.log(`\n⚠️  [THÁNATOS] A ALMA DO BOT SE DESCONECTOU (Código: ${erroCodigo}).`);
+            if (deveReiniciar) {
+                console.log('🔄 Tentando reviver o bot...');
+                iniciarThanatos();
+            }
+        } else if (connection === 'open') {
+            console.log('\n⚡ [THÁNATOS BOT] CONECTADO AO SUBMUNDO DO WHATSAPP!');
+            console.log('📱 Pronto para rodar no Termux.');
+            carregarComandos();
+        }
+    });
+
+    socket.ev.on('creds.update', saveCreds);
+
+    socket.ev.on('messages.upsert', async (m) => {
+        const msg = m.messages[0];
+        if (!msg.message || msg.key.fromMe) return; 
+
+        const deOnde = msg.key.remoteJid;
+        const texto = msg.message.conversation || msg.message.extendedTextMessage?.text || '';
+        const ehGrupo = deOnde.endsWith('@g.us');
+
+        if (ehGrupo) {
+            try {
+                const metadata = await socket.groupMetadata(deOnde);
+                const participantes = metadata.participants;
+                const meuJid = socket.user.id.split(':')[0] + '@s.whatsapp.net';
+                const remetente = msg.key.participant || msg.key.remoteJid;
+
+                const botEhAdmin = participantes.find(p => p.id === meuJid)?.admin?.includes('admin');
+                const remetenteEhAdmin = participantes.find(p => p.id === remetente)?.admin?.includes('admin');
+
+                if (botEhAdmin && !remetenteEhAdmin) {
+                    
+                    // 1️⃣ ANTILINK
+                    const caminhoAntilink = path.resolve(__dirname, 'src', 'dados', 'antilink.json');
+                    let antilinkAtivo = false;
+                    if (fs.existsSync(caminhoAntilink)) {
+                        antilinkAtivo = !!JSON.parse(fs.readFileSync(caminhoAntilink, 'utf-8'))[deOnde];
+                    }
+                    if (antilinkAtivo && /chat\.whatsapp\.com\/[a-zA-Z0-9]{20,26}/i.test(texto)) {
+                        await socket.sendMessage(deOnde, { delete: msg.key });
+                        await socket.groupParticipantsUpdate(deOnde, [remetente], 'remove');
+                        return await socket.sendMessage(deOnde, { 
+                            text: `🛡️ *SISTEMA ANTILINK REAGIU.*\n\nA alma de @${remetente.split('@')[0]} tentou espalhar links e foi purgada.`, 
+                            mentions: [remetente] 
+                        });
+                    }
+
+                    // 2️⃣ ANTIFAKE
+                    const caminhoAntifake = path.resolve(__dirname, 'src', 'dados', 'antifake.json');
+                    let antifakeAtivo = false;
+                    if (fs.existsSync(caminhoAntifake)) {
+                        antifakeAtivo = !!JSON.parse(fs.readFileSync(caminhoAntifake, 'utf-8'))[deOnde];
+                    }
+                    if (antifakeAtivo && !remetente.startsWith('55')) {
+                        await socket.sendMessage(deOnde, { delete: msg.key });
+                        await socket.groupParticipantsUpdate(deOnde, [remetente], 'remove');
+                        return await socket.sendMessage(deOnde, { 
+                            text: `🛡️ *SISTEMA ANTIFAKE REAGIU.*\n\nO número estrangeiro @${remetente.split('@')[0]} violou o perímetro nacional e foi banido.`, 
+                            mentions: [remetente] 
+                        });
+                    }
+
+                    // 3️⃣ ANTIDOC
+                    const caminhoAntidoc = path.resolve(__dirname, 'src', 'dados', 'antidoc.json');
+                    let antidocAtivo = false;
+                    if (fs.existsSync(caminhoAntidoc)) {
+                        antidocAtivo = !!JSON.parse(fs.readFileSync(caminhoAntidoc, 'utf-8'))[deOnde];
+                    }
+                    const ehDocumento = msg.message.documentMessage || msg.message.documentWithCaptionMessage;
+                    if (antidocAtivo && ehDocumento) {
+                        await socket.sendMessage(deOnde, { delete: msg.key });
+                        return await socket.sendMessage(deOnde, { 
+                            text: `🛡️ *SISTEMA ANTIDOC REAGIU.*\n\n@${remetente.split('@')[0]}, o envio de arquivos e documentos é proibido neste grupo. Mensagem deletada.`, 
+                            mentions: [remetente] 
+                        });
+                    }
+
+                    // 4️⃣ ANTIAUDIO
+                    const caminhoAntiaudio = path.resolve(__dirname, 'src', 'dados', 'antiaudio.json');
+                    let antiaudioAtivo = false;
+                    if (fs.existsSync(caminhoAntiaudio)) {
+                        antiaudioAtivo = !!JSON.parse(fs.readFileSync(caminhoAntiaudio, 'utf-8'))[deOnde];
+                    }
+                    const ehAudio = msg.message.audioMessage;
+                    if (antiaudioAtivo && ehAudio) {
+                        await socket.sendMessage(deOnde, { delete: msg.key });
+                        return await socket.sendMessage(deOnde, { 
+                            text: `🛡️ *SISTEMA ANTIAUDIO REAGIU.*\n\n@${remetente.split('@')[0]}, notas de voz não são permitidas sob a barreira do silêncio. Áudio apagado.`, 
+                            mentions: [remetente] 
+                        });
+                    }
+
+                    // 5️⃣ ANTIPAY
+                    const caminhoAntipay = path.resolve(__dirname, 'src', 'dados', 'antipay.json');
+                    let antipayAtivo = false;
+                    if (fs.existsSync(caminhoAntipay)) {
+                        antipayAtivo = !!JSON.parse(fs.readFileSync(caminhoAntipay, 'utf-8'))[deOnde];
+                    }
+                    const ehPagamento = msg.message.paymentRequestMessage;
+                    if (antipayAtivo && ehPagamento) {
+                        await socket.sendMessage(deOnde, { delete: msg.key });
+                        return await socket.sendMessage(deOnde, { 
+                            text: `🛡️ *SISTEMA ANTIPAY REAGIU.*\n\n@${remetente.split('@')[0]}, solicitações financeiras não são permitidas neste perímetro de segurança.`, 
+                            mentions: [remetente] 
+                        });
+                    }
+
+                }
+            } catch (erroDefesas) {
+                console.error('Erro no processamento dos sistemas de defesa:', erroDefesas);
+            }
+        }
+
+        const prefixo = '!';
+        if (!texto.startsWith(prefixo)) return;
+
+        const argumentos = texto.slice(prefixo.length).trim().split(/ +/);
+        const nomeComando = argumentos.shift().toLowerCase();
+
+        const comando = comandos[nomeComando];
+        if (comando) {
+            try {
+                await comando.executar(socket, msg, argumentos);
+            } catch (erro) {
+                console.error(`❌ Erro ao executar o comando !${nomeComando}:`, erro);
+                await socket.sendMessage(deOnde, { text: '❌ Ocorreu um erro interno ao executar este comando.' });
+            }
+        }
+    });
+}
+
+iniciarThanatos();
+
+module.exports = { comandos };
