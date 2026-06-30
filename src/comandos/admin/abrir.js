@@ -7,30 +7,16 @@ module.exports = {
         if (!deOnde.endsWith('@g.us')) return;
 
         try {
-            const metadata = await socket.groupMetadata(deOnde);
-            const participantes = metadata.participants;
-            
-            // Tratamento correto do ID do bot para evitar o erro de privilégios
-            const meuJid = socket.user.id.split(':')[0] + '@s.whatsapp.net';
-            const remetente = msg.key.participant || msg.key.remoteJid;
-
-            const botEhAdmin = participantes.find(p => p.id === meuJid)?.admin?.includes('admin');
-            const remetenteEhAdmin = participantes.find(p => p.id === remetente)?.admin?.includes('admin');
-
-            if (!remetenteEhAdmin) {
-                return await socket.sendMessage(deOnde, { text: '❌ Apenas administradores mortais podem usar este comando.' });
-            }
-
-            if (!botEhAdmin) {
-                return await socket.sendMessage(deOnde, { text: '❌ Eu preciso de privilégios administrativos (ser Admin) para abrir o chat.' });
-            }
-
+            // Tenta alterar a configuração direto no WhatsApp
             await socket.groupSettingUpdate(deOnde, 'not_announcement');
-            await socket.sendMessage(deOnde, { text: '🔓 *CHAT ABERTO.*\n\nThánatos permitiu que os mortais voltem a falar neste recinto.' });
-
+            await socket.sendMessage(deOnde, { 
+                text: '🔓 *CHAT ABERTO.*\n\nThánatos permitiu que os mortais voltem a falar neste recinto.' 
+            });
         } catch (erro) {
-            console.error(erro);
-            await socket.sendMessage(deOnde, { text: '❌ Ocorreu um erro ao tentar abrir o grupo.' });
+            // Se der erro (ex: falta de admin), avisa o chat
+            await socket.sendMessage(deOnde, { 
+                text: '❌ Preciso ser administrador do grupo para abrir o chat.' 
+            });
         }
     }
 };
