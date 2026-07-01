@@ -1,4 +1,4 @@
-const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = require('@whiskeysockets/baileys');
+const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, getContentType } = require('@whiskeysockets/baileys');
 const pino = require('pino');
 const fs = require('fs');
 const path = require('path');
@@ -107,10 +107,14 @@ async function iniciarThanatos() {
 
         if (ehGrupo) {
             try {
+                // Identificadores estáveis de tipo de mensagem via Baileys
+                const msgType = getContentType(msg.message);
+
+                console.log(`📩 Mensagem recebida no grupo! Texto: "${texto}" | Tipo Real: ${msgType}`);
+
                 const metadata = await socket.groupMetadata(deOnde);
                 const participantes = metadata.participants;
                 
-                // 🛠️ TRATAMENTO DOS JIDs (CORREÇÃO DO BUG DE RECONHECIMENTO)
                 const meuJidRaw = socket.user.id.split(':')[0];
                 const meuJid = meuJidRaw.includes('@') ? meuJidRaw : `${meuJidRaw}@s.whatsapp.net`;
                 
@@ -118,9 +122,10 @@ async function iniciarThanatos() {
                 const remetenteClean = remetenteRaw.split(':')[0];
                 const remetente = remetenteClean.includes('@') ? remetenteClean : `${remetenteClean}@s.whatsapp.net`;
 
-                // Validação robusta de cargos (admin ou criador do grupo)
                 const botEhAdmin = participantes.find(p => p.id === meuJid)?.admin !== undefined;
                 const remetenteEhAdmin = participantes.find(p => p.id === remetente)?.admin !== undefined;
+
+                console.log(`🛡️ Verificação -> Bot é Admin? ${botEhAdmin} | Remetente é Admin? ${remetenteEhAdmin}`);
 
                 if (botEhAdmin && !remetenteEhAdmin) {
                     
@@ -145,9 +150,6 @@ async function iniciarThanatos() {
                     } catch (e) {
                         console.error("Erro ao ler/inicializar antias.json no index:", e);
                     }
-
-                    // Identificadores de Tipo de Mensagem Extraídos do Objeto Base
-                    const msgType = Object.keys(msg.message)[0];
 
                     // 1️⃣ ANTILINK
                     const antilinkAtivo = configs.antiLink?.includes(deOnde);
@@ -194,7 +196,7 @@ async function iniciarThanatos() {
 
                     // 6️⃣ ANTI-STATUS
                     const antistatusAtivo = configs.antiStatus?.includes(deOnde);
-                    const ehStatusEncaminhado = msg.message?.protocolMessage?.type === 4 || msgType === 'statusMentionMessage';
+                    const ehStatusEncaminhado = msgType === 'protocolMessage' || msgType === 'statusMentionMessage';
                     if (antistatusAtivo && ehStatusEncaminhado) {
                         await socket.sendMessage(deOnde, { delete: msg.key });
                         await socket.groupParticipantsUpdate(deOnde, [remetente], 'remove');
@@ -219,7 +221,7 @@ async function iniciarThanatos() {
         const comando = comandos[nomeComando];
         if (comando) {
             try {
-                await comando.executar(socket, msg, argumentos);
+                await comando.executar(socket, msg, arguments);
             } catch (erro) {
                 console.error(`❌ Erro ao executar o comando !${nomeComando}:`, erro);
                 await socket.sendMessage(deOnde, { text: '❌ Ocorreu um erro interno ao executar este comando.' });
