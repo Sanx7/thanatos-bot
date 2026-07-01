@@ -124,8 +124,12 @@ async function iniciarThanatos() {
                 const remetenteClean = remetenteRaw.split(':')[0];
                 const remetente = remetenteClean.includes('@') ? remetenteClean : `${remetenteClean}@s.whatsapp.net`;
 
-                const botEhAdmin = participantes.find(p => p.id.split(':')[0] === meuJid.split(':')[0])?.admin !== undefined;
-                const remetenteEhAdmin = participantes.find(p => p.id.split(':')[0] === remetente.split(':')[0])?.admin !== undefined;
+                // CORREÇÃO DOS ADMINS: Validação explícita de strings aceitas pelo ecossistema do WhatsApp
+                const botParticipante = participantes.find(p => p.id.split(':')[0] === meuJid.split(':')[0]);
+                const botEhAdmin = botParticipante && (botParticipante.admin === 'admin' || botParticipante.admin === 'superadmin');
+                
+                const remetenteParticipante = participantes.find(p => p.id.split(':')[0] === remetente.split(':')[0]);
+                const remetenteEhAdmin = remetenteParticipante && (remetenteParticipante.admin === 'admin' || remetenteParticipante.admin === 'superadmin');
 
                 console.log(`🛡️ Verificação -> Bot é Admin? ${botEhAdmin} | Remetente é Admin? ${remetenteEhAdmin}`);
 
@@ -210,7 +214,7 @@ async function iniciarThanatos() {
 
                 }
             } catch (erroDefesas) {
-                console.error('Erro no processamento dos sistemas de defesa:', erroDefesas);
+                console.error('Erro no processamento dos sistemas de defense:', erroDefesas);
             }
         }
 
