@@ -112,7 +112,8 @@ async function iniciarThanatos() {
 
                 console.log(`📩 Mensagem recebida no grupo! Texto: "${texto}" | Tipo Real: ${msgType}`);
 
-                const metadata = await socket.groupMetadata(deOnde);
+                // Força o Baileys a buscar os dados atualizados do grupo direto do servidor, sem usar cache desatualizado
+const metadata = await socket.groupMetadata(deOnde, false);
                 const participantes = metadata.participants;
                 
                 const meuJidRaw = socket.user.id.split(':')[0];
