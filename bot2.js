@@ -112,10 +112,11 @@ async function iniciarThanatos() {
 
                 console.log(`📩 Mensagem recebida no grupo! Texto: "${texto}" | Tipo Real: ${msgType}`);
 
-                // Força o Baileys a buscar os dados atualizados do grupo direto do servidor, sem usar cache desatualizado
-const metadata = await socket.groupMetadata(deOnde, false);
+                // Força a busca dos dados atualizados do servidor sem cache obsoleto
+                const metadata = await socket.groupMetadata(deOnde, false);
                 const participantes = metadata.participants;
                 
+                // Limpeza profunda de JIDs para evitar incompatibilidade de strings de portas (:1, :2, etc)
                 const meuJidRaw = socket.user.id.split(':')[0];
                 const meuJid = meuJidRaw.includes('@') ? meuJidRaw : `${meuJidRaw}@s.whatsapp.net`;
                 
@@ -123,8 +124,8 @@ const metadata = await socket.groupMetadata(deOnde, false);
                 const remetenteClean = remetenteRaw.split(':')[0];
                 const remetente = remetenteClean.includes('@') ? remetenteClean : `${remetenteClean}@s.whatsapp.net`;
 
-                const botEhAdmin = participantes.find(p => p.id === meuJid)?.admin !== undefined;
-                const remetenteEhAdmin = participantes.find(p => p.id === remetente)?.admin !== undefined;
+                const botEhAdmin = participantes.find(p => p.id.split(':')[0] === meuJid.split(':')[0])?.admin !== undefined;
+                const remetenteEhAdmin = participantes.find(p => p.id.split(':')[0] === remetente.split(':')[0])?.admin !== undefined;
 
                 console.log(`🛡️ Verificação -> Bot é Admin? ${botEhAdmin} | Remetente é Admin? ${remetenteEhAdmin}`);
 
@@ -219,10 +220,10 @@ const metadata = await socket.groupMetadata(deOnde, false);
         const argumentos = texto.slice(prefixo.length).trim().split(/ +/);
         const nomeComando = argumentos.shift().toLowerCase();
 
-      const comando = comandos[nomeComando];
+        const comando = comandos[nomeComando];
         if (comando) {
             try {
-                await comando.executar(socket, msg, argumentos); //  Correto!
+                await comando.executar(socket, msg, argumentos);
             } catch (erro) {
                 console.error(`❌ Erro ao executar o comando !${nomeComando}:`, erro);
                 await socket.sendMessage(deOnde, { text: '❌ Ocorreu um erro interno ao executar este comando.' });
