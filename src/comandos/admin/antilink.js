@@ -1,57 +1,48 @@
 const fs = require('fs');
 const path = require('path');
 
-// Caminho onde o status de cada grupo será salvo
-const caminhoConfig = path.resolve(__dirname, '..', '..', 'dados', 'antilink.json');
+const BANCO_CONFIG = path.resolve(__dirname, '..', '..', 'dados', 'antias.json');
 
-// Função auxiliar para ler o arquivo JSON com segurança
-function lerConfig() {
-    if (!fs.existsSync(caminhoConfig)) {
-        // Se o arquivo não existir, cria a pasta de dados e um JSON vazio
-        const pastaDados = path.dirname(caminhoConfig);
-        if (!fs.existsSync(pastaDados)) fs.mkdirSync(pastaDados, { recursive: true });
-        fs.writeFileSync(caminhoConfig, JSON.stringify({}));
-        return {};
-    }
+function lerConfiguracoes() {
     try {
-        return JSON.parse(fs.readFileSync(caminhoConfig, 'utf-8'));
+        if (!fs.existsSync(BANCO_CONFIG)) return { antiAudio: [], antiDocument: [], antiEvent: [], antiLink: [], antiPayment: [], antiStatus: [] };
+        return JSON.parse(fs.readFileSync(BANCO_CONFIG, 'utf-8'));
     } catch {
-        return {};
+        return { antiAudio: [], antiDocument: [], antiEvent: [], antiLink: [], antiPayment: [], antiStatus: [] };
     }
+}
+
+function salvarConfiguracoes(config) {
+    fs.writeFileSync(BANCO_CONFIG, JSON.stringify(config, null, 2));
 }
 
 module.exports = {
     nome: 'antilink',
-    descricao: 'Ativa ou desativa o sistema de proteção contra links no grupo',
+    descricao: 'Bane quem envia links de grupos',
     categoria: 'admin',
     async executar(socket, msg, args) {
         const deOnde = msg.key.remoteJid;
-        if (!deOnde.endsWith('@g.us')) return await socket.sendMessage(deOnde, { text: '❌ Este comando só pode ser utilizado em grupos.' });
+        if (!deOnde.endsWith('@g.us')) return;
 
-        // Validação de permissão do remetente
         const metadata = await socket.groupMetadata(deOnde);
-        const participantes = metadata.participants;
         const remetente = msg.key.participant || msg.key.remoteJid;
-        const remetenteEhAdmin = participantes.find(p => p.id === remetente)?.admin?.includes('admin');
+        const remetenteEhAdmin = metadata.participants.find(p => p.id === remetente)?.admin?.includes('admin');
 
-        if (!remetenteEhAdmin) {
-            return await socket.sendMessage(deOnde, { text: '❌ Apenas administradores podem alterar as defesas do grupo.' });
-        }
+        if (!remetenteEhAdmin) return await socket.sendMessage(deOnde, { text: '❌ Apenas administradores podem alterar as defesas.' });
 
         const acao = args[0]?.toLowerCase();
-        if (acao !== 'on' && acao !== 'off') {
-            return await socket.sendMessage(deOnde, { text: '🔮 *Uso correto:* `!antilink on` para ativar ou `!antilink off` para desativar.' });
-        }
+        if (acao !== 'on' && acao !== 'off') return await socket.sendMessage(deOnde, { text: '🔮 *Uso correto:* `!antilink on` ou `!antilink off`.' });
 
-        // Lê o estado atual dos grupos, modifica e salva de volta
-        const configs = lerConfig();
-        configs[deOnde] = (acao === 'on');
-        fs.writeFileSync(caminhoConfig, JSON.stringify(configs, null, 2));
+        let configs = lerConfiguracoes();
 
         if (acao === 'on') {
-            await socket.sendMessage(deOnde, { text: '🛡️ *BARREIRA ATIVADA.*\n\nO Antilink do Thánatos está vigilante neste chat. Qualquer link externo resultará na purgação da alma.' });
+            if (!configs.antiLink.includes(deOnde)) configs.antiLink.push(deOnde);
+            salvarConfiguracoes(configs);
+            await socket.sendMessage(deOnde, { text: '🛡️ *ANTILINK ATIVADO.*\n\nThánatos agora monitora os links e purgará quem os enviar.' });
         } else {
-            await socket.sendMessage(deOnde, { text: '⚠️ *BARREIRA DESATIVADA.*\n\nO Antilink foi desligado. Os portões do submundo estão abertos para links temporariamente.' });
+            configs.antiLink = configs.antiLink.filter(id => id !== deOnde);
+            salvarConfiguracoes(configs);
+            await socket.sendMessage(deOnde, { text: '⚠️ *ANTILINK DESATIVADA.*\n\nLinks voltaram a ser permitidos.' });
         }
     }
 };

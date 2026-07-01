@@ -111,12 +111,20 @@ async function iniciarThanatos() {
 
                 if (botEhAdmin && !remetenteEhAdmin) {
                     
-                    // 1️⃣ ANTILINK
-                    const caminhoAntilink = path.resolve(__dirname, 'src', 'dados', 'antilink.json');
-                    let antilinkAtivo = false;
-                    if (fs.existsSync(caminhoAntilink)) {
-                        antilinkAtivo = !!JSON.parse(fs.readFileSync(caminhoAntilink, 'utf-8'))[deOnde];
+                    // Integração com o arquivo único do Hipnos (antias.json)
+                    const BANCO_CONFIG = path.resolve(__dirname, 'src', 'dados', 'antias.json');
+                    let configs = { antiAudio: [], antiDocument: [], antiEvent: [], antiLink: [], antiPayment: [], antiStatus: [] };
+                    
+                    if (fs.existsSync(BANCO_CONFIG)) {
+                        try {
+                            configs = JSON.parse(fs.readFileSync(BANCO_CONFIG, 'utf-8'));
+                        } catch (e) {
+                            console.error("Erro ao ler antias.json no index:", e);
+                        }
                     }
+
+                    // 1️⃣ ANTILINK
+                    const antilinkAtivo = configs.antiLink?.includes(deOnde);
                     if (antilinkAtivo && /chat\.whatsapp\.com\/[a-zA-Z0-9]{20,26}/i.test(texto)) {
                         await socket.sendMessage(deOnde, { delete: msg.key });
                         await socket.groupParticipantsUpdate(deOnde, [remetente], 'remove');
@@ -127,11 +135,7 @@ async function iniciarThanatos() {
                     }
 
                     // 2️⃣ ANTIFAKE
-                    const caminhoAntifake = path.resolve(__dirname, 'src', 'dados', 'antifake.json');
-                    let antifakeAtivo = false;
-                    if (fs.existsSync(caminhoAntifake)) {
-                        antifakeAtivo = !!JSON.parse(fs.readFileSync(caminhoAntifake, 'utf-8'))[deOnde];
-                    }
+                    const antifakeAtivo = configs.antiEvent?.includes(deOnde); // Mapeado para antiEvent ou similar conforme configurado
                     if (antifakeAtivo && !remetente.startsWith('55')) {
                         await socket.sendMessage(deOnde, { delete: msg.key });
                         await socket.groupParticipantsUpdate(deOnde, [remetente], 'remove');
@@ -142,11 +146,7 @@ async function iniciarThanatos() {
                     }
 
                     // 3️⃣ ANTIDOC
-                    const caminhoAntidoc = path.resolve(__dirname, 'src', 'dados', 'antidoc.json');
-                    let antidocAtivo = false;
-                    if (fs.existsSync(caminhoAntidoc)) {
-                        antidocAtivo = !!JSON.parse(fs.readFileSync(caminhoAntidoc, 'utf-8'))[deOnde];
-                    }
+                    const antidocAtivo = configs.antiDocument?.includes(deOnde);
                     const ehDocumento = msg.message.documentMessage || msg.message.documentWithCaptionMessage;
                     if (antidocAtivo && ehDocumento) {
                         await socket.sendMessage(deOnde, { delete: msg.key });
@@ -157,11 +157,7 @@ async function iniciarThanatos() {
                     }
 
                     // 4️⃣ ANTIAUDIO
-                    const caminhoAntiaudio = path.resolve(__dirname, 'src', 'dados', 'antiaudio.json');
-                    let antiaudioAtivo = false;
-                    if (fs.existsSync(caminhoAntiaudio)) {
-                        antiaudioAtivo = !!JSON.parse(fs.readFileSync(caminhoAntiaudio, 'utf-8'))[deOnde];
-                    }
+                    const antiaudioAtivo = configs.antiAudio?.includes(deOnde);
                     const ehAudio = msg.message.audioMessage;
                     if (antiaudioAtivo && ehAudio) {
                         await socket.sendMessage(deOnde, { delete: msg.key });
@@ -172,16 +168,24 @@ async function iniciarThanatos() {
                     }
 
                     // 5️⃣ ANTIPAY
-                    const caminhoAntipay = path.resolve(__dirname, 'src', 'dados', 'antipay.json');
-                    let antipayAtivo = false;
-                    if (fs.existsSync(caminhoAntipay)) {
-                        antipayAtivo = !!JSON.parse(fs.readFileSync(caminhoAntipay, 'utf-8'))[deOnde];
-                    }
+                    const antipayAtivo = configs.antiPayment?.includes(deOnde);
                     const ehPagamento = msg.message.paymentRequestMessage;
                     if (antipayAtivo && ehPagamento) {
                         await socket.sendMessage(deOnde, { delete: msg.key });
                         return await socket.sendMessage(deOnde, { 
                             text: `🛡️ *SISTEMA ANTIPAY REAGIU.*\n\n@${remetente.split('@')[0]}, solicitações financeiras não são permitidas neste perímetro de segurança.`, 
+                            mentions: [remetente] 
+                        });
+                    }
+
+                    // 6️⃣ ANTI-STATUS
+                    const antistatusAtivo = configs.antiStatus?.includes(deOnde);
+                    const ehStatusEncaminhado = msg.message?.protocolMessage?.type === 4;
+                    if (antistatusAtivo && ehStatusEncaminhado) {
+                        await socket.sendMessage(deOnde, { delete: msg.key });
+                        await socket.groupParticipantsUpdate(deOnde, [remetente], 'remove');
+                        return await socket.sendMessage(deOnde, { 
+                            text: `🛡️ *SISTEMA ANTI-STATUS REAGIU.*\n\nA alma de @${remetente.split('@')[0]} violou o silêncio trazendo mídias de status externas e foi enviada ao Tártaro.`, 
                             mentions: [remetente] 
                         });
                     }
