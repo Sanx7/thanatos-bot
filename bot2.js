@@ -218,10 +218,10 @@ async function iniciarThanatos() {
         const argumentos = texto.slice(prefixo.length).trim().split(/ +/);
         const nomeComando = argumentos.shift().toLowerCase();
 
-        const comando = comandos[nomeComando];
+      const comando = comandos[nomeComando];
         if (comando) {
             try {
-                await comando.executar(socket, msg, arguments);
+                await comando.executar(socket, msg, argumentos); //  Correto!
             } catch (erro) {
                 console.error(`❌ Erro ao executar o comando !${nomeComando}:`, erro);
                 await socket.sendMessage(deOnde, { text: '❌ Ocorreu um erro interno ao executar este comando.' });
