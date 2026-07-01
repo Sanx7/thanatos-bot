@@ -109,15 +109,22 @@ async function iniciarThanatos() {
             try {
                 const metadata = await socket.groupMetadata(deOnde);
                 const participantes = metadata.participants;
-                const meuJid = socket.user.id.split(':')[0] + '@s.whatsapp.net';
-                const remetente = msg.key.participant || msg.key.remoteJid;
+                
+                // 🛠️ TRATAMENTO DOS JIDs (CORREÇÃO DO BUG DE RECONHECIMENTO)
+                const meuJidRaw = socket.user.id.split(':')[0];
+                const meuJid = meuJidRaw.includes('@') ? meuJidRaw : `${meuJidRaw}@s.whatsapp.net`;
+                
+                const remetenteRaw = msg.key.participant || msg.key.remoteJid;
+                const remetenteClean = remetenteRaw.split(':')[0];
+                const remetente = remetenteClean.includes('@') ? remetenteClean : `${remetenteClean}@s.whatsapp.net`;
 
-                const botEhAdmin = participantes.find(p => p.id === meuJid)?.admin?.includes('admin');
-                const remetenteEhAdmin = participantes.find(p => p.id === remetente)?.admin?.includes('admin');
+                // Validação robusta de cargos (admin ou criador do grupo)
+                const botEhAdmin = participantes.find(p => p.id === meuJid)?.admin !== undefined;
+                const remetenteEhAdmin = participantes.find(p => p.id === remetente)?.admin !== undefined;
 
                 if (botEhAdmin && !remetenteEhAdmin) {
                     
-                   // Integração com o arquivo único do Hipnos (antias.json)
+                    // Integração com o arquivo único do Hipnos (antias.json)
                     const BANCO_CONFIG = path.resolve(__dirname, 'src', 'dados', 'antias.json');
                     let configs = { antiAudio: [], antiDocument: [], antiEvent: [], antiLink: [], antiPayment: [], antiStatus: [] };
                     
@@ -144,7 +151,7 @@ async function iniciarThanatos() {
 
                     // 1️⃣ ANTILINK
                     const antilinkAtivo = configs.antiLink?.includes(deOnde);
-                    if (antilinkAtivo && /chat\.whatsapp\.com\/[a-zA-Z0-9]{20,26}/i.test(texto)) {
+                    if (antilinkAtivo && /(https?:\/\/[^\s]+)/g.test(texto)) {
                         await socket.sendMessage(deOnde, { delete: msg.key });
                         await socket.groupParticipantsUpdate(deOnde, [remetente], 'remove');
                         return await socket.sendMessage(deOnde, { 
@@ -168,33 +175,21 @@ async function iniciarThanatos() {
                     const antidocAtivo = configs.antiDocument?.includes(deOnde);
                     const ehDocumento = msgType === 'documentMessage' || msgType === 'documentWithCaptionMessage';
                     if (antidocAtivo && ehDocumento) {
-                        await socket.sendMessage(deOnde, { delete: msg.key });
-                        return await socket.sendMessage(deOnde, { 
-                            text: `🛡️ *SISTEMA ANTIDOC REAGIU.*\n\n@${remetente.split('@')[0]}, o envio de arquivos e documentos é proibido neste grupo. Mensagem deletada.`, 
-                            mentions: [remetente] 
-                        });
+                        return await socket.sendMessage(deOnde, { delete: msg.key });
                     }
 
                     // 4️⃣ ANTIAUDIO
                     const antiaudioAtivo = configs.antiAudio?.includes(deOnde);
                     const ehAudio = msgType === 'audioMessage';
                     if (antiaudioAtivo && ehAudio) {
-                        await socket.sendMessage(deOnde, { delete: msg.key });
-                        return await socket.sendMessage(deOnde, { 
-                            text: `🛡️ *SISTEMA ANTIAUDIO REAGIU.*\n\n@${remetente.split('@')[0]}, notas de voz não são permitidas sob a barreira do silêncio. Áudio apagado.`, 
-                            mentions: [remetente] 
-                        });
+                        return await socket.sendMessage(deOnde, { delete: msg.key });
                     }
 
                     // 5️⃣ ANTIPAY
                     const antipayAtivo = configs.antiPayment?.includes(deOnde);
                     const ehPagamento = msgType === 'paymentRequestMessage' || msgType === 'sendPaymentMessage';
                     if (antipayAtivo && ehPagamento) {
-                        await socket.sendMessage(deOnde, { delete: msg.key });
-                        return await socket.sendMessage(deOnde, { 
-                            text: `🛡️ *SISTEMA ANTIPAY REAGIU.*\n\n@${remetente.split('@')[0]}, solicitações financeiras não são permitidas neste perímetro de segurança.`, 
-                            mentions: [remetente] 
-                        });
+                        return await socket.sendMessage(deOnde, { delete: msg.key });
                     }
 
                     // 6️⃣ ANTI-STATUS
