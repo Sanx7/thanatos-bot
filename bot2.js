@@ -96,8 +96,14 @@ async function iniciarThanatos() {
         if (!msg.message || msg.key.fromMe) return; 
 
         const deOnde = msg.key.remoteJid;
-        const texto = msg.message.conversation || msg.message.extendedTextMessage?.text || '';
         const ehGrupo = deOnde.endsWith('@g.us');
+
+        // Extração avançada e precisa de texto para pegar legendas de links, mídias, etc.
+        const texto = msg.message.conversation || 
+                      msg.message.extendedTextMessage?.text || 
+                      msg.message.imageMessage?.caption || 
+                      msg.message.videoMessage?.caption || 
+                      '';
 
         if (ehGrupo) {
             try {
@@ -111,17 +117,30 @@ async function iniciarThanatos() {
 
                 if (botEhAdmin && !remetenteEhAdmin) {
                     
-                    // Integração com o arquivo único do Hipnos (antias.json)
+                   // Integração com o arquivo único do Hipnos (antias.json)
                     const BANCO_CONFIG = path.resolve(__dirname, 'src', 'dados', 'antias.json');
                     let configs = { antiAudio: [], antiDocument: [], antiEvent: [], antiLink: [], antiPayment: [], antiStatus: [] };
                     
-                    if (fs.existsSync(BANCO_CONFIG)) {
-                        try {
-                            configs = JSON.parse(fs.readFileSync(BANCO_CONFIG, 'utf-8'));
-                        } catch (e) {
-                            console.error("Erro ao ler antias.json no index:", e);
+                    try {
+                        const pastaDados = path.dirname(BANCO_CONFIG);
+                        if (!fs.existsSync(pastaDados)) fs.mkdirSync(pastaDados, { recursive: true });
+                        
+                        if (fs.existsSync(BANCO_CONFIG)) {
+                            const conteudo = fs.readFileSync(BANCO_CONFIG, 'utf-8').trim();
+                            if (conteudo) {
+                                configs = JSON.parse(conteudo);
+                            } else {
+                                fs.writeFileSync(BANCO_CONFIG, JSON.stringify(configs, null, 2));
+                            }
+                        } else {
+                            fs.writeFileSync(BANCO_CONFIG, JSON.stringify(configs, null, 2));
                         }
+                    } catch (e) {
+                        console.error("Erro ao ler/inicializar antias.json no index:", e);
                     }
+
+                    // Identificadores de Tipo de Mensagem Extraídos do Objeto Base
+                    const msgType = Object.keys(msg.message)[0];
 
                     // 1️⃣ ANTILINK
                     const antilinkAtivo = configs.antiLink?.includes(deOnde);
@@ -135,7 +154,7 @@ async function iniciarThanatos() {
                     }
 
                     // 2️⃣ ANTIFAKE
-                    const antifakeAtivo = configs.antiEvent?.includes(deOnde); // Mapeado para antiEvent ou similar conforme configurado
+                    const antifakeAtivo = configs.antiEvent?.includes(deOnde); 
                     if (antifakeAtivo && !remetente.startsWith('55')) {
                         await socket.sendMessage(deOnde, { delete: msg.key });
                         await socket.groupParticipantsUpdate(deOnde, [remetente], 'remove');
@@ -147,7 +166,7 @@ async function iniciarThanatos() {
 
                     // 3️⃣ ANTIDOC
                     const antidocAtivo = configs.antiDocument?.includes(deOnde);
-                    const ehDocumento = msg.message.documentMessage || msg.message.documentWithCaptionMessage;
+                    const ehDocumento = msgType === 'documentMessage' || msgType === 'documentWithCaptionMessage';
                     if (antidocAtivo && ehDocumento) {
                         await socket.sendMessage(deOnde, { delete: msg.key });
                         return await socket.sendMessage(deOnde, { 
@@ -158,7 +177,7 @@ async function iniciarThanatos() {
 
                     // 4️⃣ ANTIAUDIO
                     const antiaudioAtivo = configs.antiAudio?.includes(deOnde);
-                    const ehAudio = msg.message.audioMessage;
+                    const ehAudio = msgType === 'audioMessage';
                     if (antiaudioAtivo && ehAudio) {
                         await socket.sendMessage(deOnde, { delete: msg.key });
                         return await socket.sendMessage(deOnde, { 
@@ -169,7 +188,7 @@ async function iniciarThanatos() {
 
                     // 5️⃣ ANTIPAY
                     const antipayAtivo = configs.antiPayment?.includes(deOnde);
-                    const ehPagamento = msg.message.paymentRequestMessage;
+                    const ehPagamento = msgType === 'paymentRequestMessage' || msgType === 'sendPaymentMessage';
                     if (antipayAtivo && ehPagamento) {
                         await socket.sendMessage(deOnde, { delete: msg.key });
                         return await socket.sendMessage(deOnde, { 
@@ -180,7 +199,7 @@ async function iniciarThanatos() {
 
                     // 6️⃣ ANTI-STATUS
                     const antistatusAtivo = configs.antiStatus?.includes(deOnde);
-                    const ehStatusEncaminhado = msg.message?.protocolMessage?.type === 4;
+                    const ehStatusEncaminhado = msg.message?.protocolMessage?.type === 4 || msgType === 'statusMentionMessage';
                     if (antistatusAtivo && ehStatusEncaminhado) {
                         await socket.sendMessage(deOnde, { delete: msg.key });
                         await socket.groupParticipantsUpdate(deOnde, [remetente], 'remove');
